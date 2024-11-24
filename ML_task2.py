@@ -1,12 +1,14 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, GridSearchCV, learning_curve
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, GridSearchCV
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import accuracy_score, classification_report
 import matplotlib.pyplot as plt
 import seaborn as sns
+from imblearn.over_sampling import SMOTE
+from sklearn.utils.class_weight import compute_class_weight
 
 # Load the dataset
 file_path = "/Users/yanwai/Desktop/ML_Assignment/adult-dataset/adult.csv"  # Update this path
@@ -82,12 +84,16 @@ y = data['<=50K']
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
 
+# Handle class imbalance using SMOTE
+smote = SMOTE(random_state=42)
+X_resampled, y_resampled = smote.fit_resample(X, y)
+
 # Split the data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.3, random_state=42)
 
 # --- Before Tuning: Decision Tree Classifier ---
 print("\nEvaluating Decision Tree Classifier (Before Tuning)...")
-dt = DecisionTreeClassifier(random_state=42)
+dt = DecisionTreeClassifier(random_state=42, class_weight='balanced')  # Add class weight for imbalance
 dt.fit(X_train, y_train)
 
 # Predictions
@@ -102,7 +108,7 @@ print(classification_report(y_test, y_pred_dt_before))
 
 # --- Before Tuning: Logistic Regression ---
 print("\nEvaluating Logistic Regression Model (Before Tuning)...")
-lr = LogisticRegression(random_state=42)
+lr = LogisticRegression(random_state=42, class_weight='balanced')  # Add class weight for imbalance
 lr.fit(X_train, y_train)
 
 # Predictions
@@ -125,7 +131,7 @@ dt_param_grid = {
 }
 
 print("\nTraining Decision Tree Classifier with GridSearchCV...")
-dt_grid_search = GridSearchCV(estimator=DecisionTreeClassifier(random_state=42),
+dt_grid_search = GridSearchCV(estimator=DecisionTreeClassifier(random_state=42, class_weight='balanced'),
                               param_grid=dt_param_grid, cv=5, n_jobs=-1, scoring='accuracy')
 dt_grid_search.fit(X_train, y_train)
 
@@ -142,24 +148,25 @@ print("Accuracy:", dt_accuracy)
 print("\nClassification Report (After Tuning):")
 print(classification_report(y_test, y_pred_dt))
 
-# --- Hyperparameter tuning for Logistic Regression ---
-lr_param_grid = {
+# --- Hyperparameter tuning for Logistic Regression using RandomizedSearchCV ---
+lr_param_distributions = {
     'penalty': ['l2', 'none'],  # Regularization
     'C': [0.1, 1, 10],  # Regularization strength
     'solver': ['liblinear', 'saga'],  # Solver algorithms
     'max_iter': [100, 200, 500]  # Number of iterations for convergence
 }
 
-print("\nTraining Logistic Regression Model with GridSearchCV...")
-lr_grid_search = GridSearchCV(estimator=LogisticRegression(random_state=42),
-                              param_grid=lr_param_grid, cv=5, n_jobs=-1, scoring='accuracy')
-lr_grid_search.fit(X_train, y_train)
+print("\nTraining Logistic Regression Model with RandomizedSearchCV...")
+lr_random_search = RandomizedSearchCV(estimator=LogisticRegression(random_state=42, class_weight='balanced'),
+                                      param_distributions=lr_param_distributions, 
+                                      n_iter=10, cv=5, n_jobs=-1, scoring='accuracy', random_state=42)
+lr_random_search.fit(X_train, y_train)
 
 # Best parameters for Logistic Regression
-print("\nBest parameters for Logistic Regression:", lr_grid_search.best_params_)
+print("\nBest parameters for Logistic Regression:", lr_random_search.best_params_)
 
 # Predictions
-y_pred_lr = lr_grid_search.predict(X_test)
+y_pred_lr = lr_random_search.predict(X_test)
 
 # Evaluate Logistic Regression Model (After Tuning)
 lr_accuracy = accuracy_score(y_test, y_pred_lr)
@@ -167,4 +174,3 @@ print("\nLogistic Regression Performance (After Tuning):")
 print("Accuracy:", lr_accuracy)
 print("\nClassification Report (After Tuning):")
 print(classification_report(y_test, y_pred_lr))
-
